@@ -40,24 +40,28 @@ class ControllerTest(unittest.TestCase):
         self.stream = FakeStream()
         self.clock = FakeClock()
         self.reports = []
-        self.controller = Controller(self.stream, self.reports.append, clock=self.clock)
+        self.cleared = 0
+        self.controller = Controller(self.stream, self.reports.append, self.clear_desired, clock=self.clock)
+
+    def clear_desired(self):
+        self.cleared += 1
 
     def test_stays_off_without_desired_state(self):
         self.controller.on_shadow(1, {})
         self.controller.reconcile()
         self.assertEqual(self.stream.starts, 0)
-        self.assertEqual(self.reports, [{"streaming": False, "error": None}])
+        self.assertEqual(self.reports, [{"streaming": False, "error": None, "stopsAt": None}])
 
     def test_starts_and_stops_from_shadow(self):
         self.controller.on_shadow(1, {"streaming": True})
         self.controller.reconcile()
         self.assertTrue(self.stream.running())
-        self.assertEqual(self.reports[-1], {"streaming": True, "error": None})
+        self.assertEqual(self.reports[-1], {"streaming": True, "error": None, "stopsAt": None})
 
         self.controller.on_delta(2, {"streaming": False})
         self.controller.reconcile()
         self.assertFalse(self.stream.running())
-        self.assertEqual(self.reports[-1], {"streaming": False, "error": None})
+        self.assertEqual(self.reports[-1], {"streaming": False, "error": None, "stopsAt": None})
 
     def test_ignores_delta_without_streaming_key(self):
         self.controller.on_shadow(1, {"streaming": True})
@@ -85,7 +89,7 @@ class ControllerTest(unittest.TestCase):
 
         self.stream.crash()
         self.controller.reconcile()
-        self.assertEqual(self.reports[-1], {"streaming": False, "error": "stream exited with code 1"})
+        self.assertEqual(self.reports[-1], {"streaming": False, "error": "stream exited with code 1", "stopsAt": None})
         self.assertEqual(self.stream.starts, 1)
 
         self.clock.now += MIN_RESTART_DELAY_SECONDS
@@ -110,7 +114,7 @@ class ControllerTest(unittest.TestCase):
 
         self.controller.on_delta(2, {"streaming": False})
         self.controller.reconcile()
-        self.assertEqual(self.reports[-1], {"streaming": False, "error": None})
+        self.assertEqual(self.reports[-1], {"streaming": False, "error": None, "stopsAt": None})
 
         self.controller.on_delta(3, {"streaming": True})
         self.controller.reconcile()
@@ -121,7 +125,95 @@ class ControllerTest(unittest.TestCase):
         self.controller.reconcile()
         self.controller.shutdown()
         self.assertFalse(self.stream.running())
-        self.assertEqual(self.reports[-1], {"streaming": False, "error": None})
+        self.assertEqual(self.reports[-1], {"streaming": False, "error": None, "stopsAt": None})
+
+
+
+class AutoStopTest(unittest.TestCase):
+    LIMIT = 30 * 60
+
+    def setUp(self):
+        self.stream = FakeStream()
+        self.clock = FakeClock()
+        self.reports = []
+        self.cleared = 0
+        self.controller = Controller(
+            self.stream, self.reports.append, self.clear_desired, max_stream_seconds=self.LIMIT, clock=self.clock
+        )
+
+    def clear_desired(self):
+        self.cleared += 1
+
+    def test_stops_and_clears_desired_after_limit(self):
+        self.controller.on_delta(1, {"streaming": True}, {"streaming": {"timestamp": self.clock.now}})
+        self.controller.reconcile()
+        self.assertEqual(self.reports[-1], {"streaming": True, "error": None, "stopsAt": int(self.clock.now + self.LIMIT)})
+
+        self.clock.now += self.LIMIT - 1
+        self.controller.reconcile()
+        self.assertTrue(self.stream.running())
+
+        self.clock.now += 1
+        self.controller.reconcile()
+        self.assertFalse(self.stream.running())
+        self.assertEqual(self.cleared, 1)
+        self.assertEqual(self.reports[-1], {"streaming": False, "error": None, "stopsAt": None})
+
+        # Stays off rather than restarting.
+        self.clock.now += 60
+        self.controller.reconcile()
+        self.assertFalse(self.stream.running())
+        self.assertEqual(self.cleared, 1)
+
+    def test_limit_counts_from_shadow_timestamp_across_restarts(self):
+        # Desired was set 29 minutes ago, before the Pi rebooted.
+        requested_at = self.clock.now - 29 * 60
+        self.controller.on_shadow(3, {"streaming": True}, {"streaming": {"timestamp": requested_at}})
+        self.controller.reconcile()
+        self.assertTrue(self.stream.running())
+
+        self.clock.now += 60
+        self.controller.reconcile()
+        self.assertFalse(self.stream.running())
+        self.assertEqual(self.cleared, 1)
+
+    def test_stale_request_never_starts(self):
+        self.controller.on_shadow(3, {"streaming": True}, {"streaming": {"timestamp": self.clock.now - 2 * self.LIMIT}})
+        self.controller.reconcile()
+        self.assertEqual(self.stream.starts, 0)
+        self.assertEqual(self.cleared, 1)
+
+    def test_crash_restarts_do_not_extend_limit(self):
+        self.controller.on_delta(1, {"streaming": True}, {"streaming": {"timestamp": self.clock.now}})
+        self.controller.reconcile()
+        self.clock.now += 20 * 60
+        self.stream.crash()
+        self.controller.reconcile()
+        self.clock.now += 60
+        self.controller.reconcile()
+        self.assertTrue(self.stream.running())
+
+        self.clock.now += 9 * 60
+        self.controller.reconcile()
+        self.assertFalse(self.stream.running())
+
+    def test_new_request_after_auto_stop_starts_a_fresh_limit(self):
+        self.controller.on_delta(1, {"streaming": True}, {"streaming": {"timestamp": self.clock.now}})
+        self.controller.reconcile()
+        self.clock.now += self.LIMIT
+        self.controller.reconcile()
+
+        self.controller.on_delta(3, {"streaming": True}, {"streaming": {"timestamp": self.clock.now}})
+        self.controller.reconcile()
+        self.assertTrue(self.stream.running())
+        self.assertEqual(self.reports[-1]["stopsAt"], int(self.clock.now + self.LIMIT))
+
+    def test_falls_back_to_local_clock_without_metadata(self):
+        self.controller.on_delta(1, {"streaming": True})
+        self.controller.reconcile()
+        self.clock.now += self.LIMIT
+        self.controller.reconcile()
+        self.assertFalse(self.stream.running())
 
 
 if __name__ == "__main__":

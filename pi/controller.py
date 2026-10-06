@@ -5,6 +5,11 @@ Shadow contract (classic shadow of the nellie-cam thing):
   state.desired.streaming   bool, set by the app. Missing means off.
   state.reported.streaming  bool, whether the stream process is running.
   state.reported.error      string, why the stream last stopped unexpectedly. Missing means no error.
+  state.reported.stopsAt    epoch seconds when the stream will auto-stop. Missing when off.
+
+Streams stop automatically STREAM_MAX_MINUTES after desired.streaming was set to true (going by
+the shadow's own timestamp, so a reboot doesn't extend it). The Pi then sets desired.streaming
+back to false itself, so the app sees it's off and it doesn't restart.
 
 The stream itself is nellie-cam-stream, run as a child process in its own process group.
 """
@@ -58,14 +63,17 @@ class StreamProcess:
 class Controller:
     """Reconciles the stream process with the desired state and reports what it's actually doing."""
 
-    def __init__(self, stream, report, clock=time.monotonic):
+    def __init__(self, stream, report, clear_desired, max_stream_seconds=0, clock=time.time):
         self._stream = stream
         self._report = report
+        self._clear_desired = clear_desired
+        self._max_stream_seconds = max_stream_seconds
         self._clock = clock
         self._lock = threading.Lock()
         self.wake = threading.Event()
 
         self._desired = False
+        self._requested_at = None
         self._version = -1
         self._started_at = None
         self._next_start = 0.0
@@ -73,16 +81,16 @@ class Controller:
         self._error = None
         self._last_report = None
 
-    def on_shadow(self, version, desired):
-        """Full desired state, from shadow/get/accepted."""
-        self._set_desired(version, bool(desired.get("streaming", False)))
+    def on_shadow(self, version, desired, metadata=None):
+        """Full desired state and its metadata, from shadow/get/accepted."""
+        self._set_desired(version, bool(desired.get("streaming", False)), _timestamp(metadata))
 
-    def on_delta(self, version, delta):
+    def on_delta(self, version, delta, metadata=None):
         """Changed keys only, from shadow/update/delta."""
         if "streaming" in delta:
-            self._set_desired(version, bool(delta["streaming"]))
+            self._set_desired(version, bool(delta["streaming"]), _timestamp(metadata))
 
-    def _set_desired(self, version, streaming):
+    def _set_desired(self, version, streaming, requested_at):
         with self._lock:
             if version < self._version:
                 log.info("Ignoring out-of-date shadow version %s", version)
@@ -90,6 +98,12 @@ class Controller:
             self._version = version
             if streaming != self._desired:
                 log.info("Desired streaming=%s (shadow version %s)", streaming, version)
+            if not streaming:
+                self._requested_at = None
+            elif requested_at is not None:
+                self._requested_at = requested_at
+            elif not self._desired or self._requested_at is None:
+                self._requested_at = self._clock()
             self._desired = streaming
         self.wake.set()
 
@@ -100,9 +114,21 @@ class Controller:
         self.wake.set()
 
     def reconcile(self):
+        now = self._clock()
         with self._lock:
             desired = self._desired
-        now = self._clock()
+            stops_at = None
+            if desired and self._max_stream_seconds and self._requested_at is not None:
+                stops_at = self._requested_at + self._max_stream_seconds
+            if stops_at is not None and now >= stops_at:
+                log.info("Stream time limit of %s minutes reached", self._max_stream_seconds // 60)
+                self._desired = desired = False
+                self._requested_at = stops_at = None
+                timed_out = True
+            else:
+                timed_out = False
+        if timed_out:
+            self._clear_desired()
         running = self._stream.running()
 
         if self._started_at is not None and not running:
@@ -136,12 +162,16 @@ class Controller:
             self._error = None
 
         # A null field in a shadow update deletes it, so a cleared error disappears from the shadow.
-        self._publish({"streaming": running, "error": self._error})
+        self._publish({
+            "streaming": running,
+            "error": self._error,
+            "stopsAt": int(stops_at) if stops_at is not None else None,
+        })
 
     def shutdown(self):
         self._stream.stop()
         self._started_at = None
-        self._publish({"streaming": False, "error": None})
+        self._publish({"streaming": False, "error": None, "stopsAt": None})
 
     def _publish(self, reported):
         with self._lock:
@@ -149,6 +179,11 @@ class Controller:
                 return
             self._last_report = reported
         self._report(reported)
+
+
+def _timestamp(metadata):
+    """When desired.streaming was last set, from shadow metadata."""
+    return (metadata or {}).get("streaming", {}).get("timestamp")
 
 
 def main():
@@ -177,7 +212,16 @@ def main():
         log.info("Reporting %s", reported)
         last_publish, _ = connection.publish(f"{shadow}/update", json.dumps({"state": {"reported": reported}}), qos)
 
-    controller = Controller(StreamProcess([os.environ.get("STREAM_COMMAND", "/usr/local/bin/nellie-cam-stream")]), report)
+    def clear_desired():
+        log.info("Setting desired streaming=false")
+        connection.publish(f"{shadow}/update", json.dumps({"state": {"desired": {"streaming": False}}}), qos)
+
+    controller = Controller(
+        StreamProcess([os.environ.get("STREAM_COMMAND", "/usr/local/bin/nellie-cam-stream")]),
+        report,
+        clear_desired,
+        max_stream_seconds=int(os.environ.get("STREAM_MAX_MINUTES") or 30) * 60,
+    )
 
     def request_shadow():
         connection.publish(f"{shadow}/get", "{}", qos)
@@ -198,7 +242,11 @@ def main():
 
     def on_get_accepted(topic, payload, **kwargs):
         doc = json.loads(payload)
-        controller.on_shadow(doc.get("version", 0), doc.get("state", {}).get("desired", {}))
+        controller.on_shadow(
+            doc.get("version", 0),
+            doc.get("state", {}).get("desired", {}),
+            doc.get("metadata", {}).get("desired"),
+        )
 
     def on_get_rejected(topic, payload, **kwargs):
         doc = json.loads(payload)
@@ -210,7 +258,7 @@ def main():
 
     def on_delta(topic, payload, **kwargs):
         doc = json.loads(payload)
-        controller.on_delta(doc.get("version", 0), doc.get("state", {}))
+        controller.on_delta(doc.get("version", 0), doc.get("state", {}), doc.get("metadata"))
 
     def on_update_rejected(topic, payload, **kwargs):
         log.error("Shadow update rejected: %s", payload.decode())

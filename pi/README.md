@@ -23,6 +23,7 @@ The app controls the camera through the classic (unnamed) shadow of the `nellie-
 | `state.desired.streaming`  | app    | `true` to stream, `false` to stop. Missing means off.                                                                        |
 | `state.reported.streaming` | Pi     | Whether the stream process is running. It turns `true` as soon as the stream starts, before the first video reaches Kinesis. |
 | `state.reported.error`     | Pi     | Why the stream last stopped unexpectedly. Missing means no error.                                                            |
+| `state.reported.stopsAt`   | Pi     | When the stream will stop automatically, in epoch seconds. Missing when off.                                                 |
 
 To start streaming, publish to `$aws/things/nellie-cam/shadow/update` (or call `UpdateThingShadow`):
 
@@ -30,8 +31,13 @@ To start streaming, publish to `$aws/things/nellie-cam/shadow/update` (or call `
 { "state": { "desired": { "streaming": true } } }
 ```
 
+Streams stop automatically after `STREAM_MAX_MINUTES` (30 by default), counted from when
+`desired.streaming` was set to `true`. The Pi then sets `desired.streaming` back to `false`
+itself, so the app sees it's off. To keep watching, set it to `true` again, which starts a
+fresh 30 minutes.
+
 The desired state persists, so if the Pi is offline or reboots it picks it up when it
-reconnects. If the stream crashes the Pi reports `streaming: false` with an `error` and
+reconnects, but a reboot doesn't reset the 30 minutes. If the stream crashes the Pi reports `streaming: false` with an `error` and
 retries with backoff (5s, doubling up to 5 minutes) for as long as `desired.streaming` is true.
 
 The app will need its own credentials allowing `iot:GetThingShadow` and `iot:UpdateThingShadow`

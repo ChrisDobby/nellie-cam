@@ -12,7 +12,7 @@ set -euo pipefail
 : "${IOT_ROLE_ALIAS:=nellie-cam-streamer}"
 : "${IOT_CERT:=/etc/nellie-cam/iot/device.cert.pem}"
 : "${IOT_KEY:=/etc/nellie-cam/iot/device.key}"
-: "${IOT_CA:=/etc/ssl/certs/ca-certificates.crt}"
+: "${IOT_CA:=/etc/ssl/certs}"
 : "${VIDEO_WIDTH:=1280}"
 : "${VIDEO_HEIGHT:=720}"
 : "${VIDEO_FRAMERATE:=25}"
@@ -37,6 +37,12 @@ if [[ -n "${AWS_ACCESS_KEY_ID:-}" ]]; then
   echo "Warning: AWS_ACCESS_KEY_ID is set but no longer used. Remove it from /etc/nellie-cam/nellie-cam.env and delete the key." >&2
 fi
 unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+
+# The KVS SDK only accepts a CA directory or a file ending in .pem (any other file fails with 0x15000020).
+if [[ ! -d "$IOT_CA" && "$IOT_CA" != *.pem ]]; then
+  echo "IOT_CA must be a directory or a .pem file (got '$IOT_CA'). Use /etc/ssl/certs." >&2
+  exit 1
+fi
 
 iot_certificate="iot-certificate,endpoint=${IOT_CREDENTIALS_ENDPOINT},cert-path=${IOT_CERT},key-path=${IOT_KEY},ca-path=${IOT_CA},role-aliases=${IOT_ROLE_ALIAS},iot-thing-name=${IOT_THING_NAME}"
 
