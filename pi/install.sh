@@ -32,7 +32,9 @@ if [[ ! -f "$KVS_SDK_DIR/build/libgstkvssink.so" ]]; then
   git clone --depth 1 --branch "$KVS_SDK_VERSION" \
     https://github.com/awslabs/amazon-kinesis-video-streams-producer-sdk-cpp.git "$KVS_SDK_DIR"
   mkdir -p "$KVS_SDK_DIR/build"
-  cmake -S "$KVS_SDK_DIR" -B "$KVS_SDK_DIR/build" \
+  # The SDK's PIC dependency defines _GNU_SOURCE after system headers are already included,
+  # so pthread_getname_np is undeclared, which GCC 14+ treats as an error. Define it up front.
+  CFLAGS="-D_GNU_SOURCE ${CFLAGS:-}" cmake -S "$KVS_SDK_DIR" -B "$KVS_SDK_DIR/build" \
     -DBUILD_GSTREAMER_PLUGIN=ON -DBUILD_DEPENDENCIES=OFF
   # Keep parallelism low: Pis with 1-2 GB RAM run out of memory with more jobs.
   cmake --build "$KVS_SDK_DIR/build" -j 2
