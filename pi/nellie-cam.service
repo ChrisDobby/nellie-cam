@@ -1,0 +1,33 @@
+[Unit]
+Description=Nellie cam: stream Camera Module 3 to Kinesis Video Streams on request via AWS IoT
+# AWS rejects signed requests if the clock is wrong, and the Pi has no RTC,
+# so wait for both the network and an NTP sync before starting.
+Wants=network-online.target time-sync.target
+After=network-online.target time-sync.target
+
+[Service]
+Type=simple
+User=nellie-cam
+Group=nellie-cam
+SupplementaryGroups=video render
+EnvironmentFile=/etc/nellie-cam/nellie-cam.env
+Environment=GST_PLUGIN_PATH=/opt/kvs-producer-sdk/build
+Environment=LD_LIBRARY_PATH=/opt/kvs-producer-sdk/open-source/local/lib
+# Lets GStreamer cache its plugin registry despite the sandboxing below.
+CacheDirectory=nellie-cam
+Environment=XDG_CACHE_HOME=/var/cache/nellie-cam
+# The controller runs the stream as a child when the device shadow asks for it.
+ExecStart=/opt/nellie-cam/venv/bin/python /opt/nellie-cam/controller.py
+Restart=always
+RestartSec=5
+# Signal only the controller on stop, so it can stop the stream cleanly and report it.
+KillMode=mixed
+TimeoutStopSec=30
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

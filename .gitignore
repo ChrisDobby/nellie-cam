@@ -1,0 +1,4 @@
+# Device keys, CSRs and certificates must never be committed.
+*.key
+*.pem
+*.csr
