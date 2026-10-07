@@ -1,0 +1,1 @@
+{"state":{"desired":{"streaming":false},"reported":{"streaming":false}},"metadata":{"desired":{"streaming":{"timestamp":1791383962}},"reported":{"streaming":{"timestamp":1791383963}}},"version":72,"timestamp":1791386065}

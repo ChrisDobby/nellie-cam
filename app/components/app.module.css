@@ -1,0 +1,95 @@
+.main {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.header h1 {
+  font-size: 1.5rem;
+}
+
+.viewer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.video {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: #111;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.player {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.placeholder,
+.overlay {
+  color: #ccc;
+}
+
+.overlay {
+  position: absolute;
+  pointer-events: none;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.button {
+  padding: 10px 20px;
+  font-size: 1rem;
+  border: none;
+  border-radius: 6px;
+  background: #047d95;
+  color: #fff;
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.link {
+  background: none;
+  border: none;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
+
+.status {
+  opacity: 0.75;
+}
+
+.error {
+  color: #b00020;
+}
+
+.title {
+  font-size: 1.5rem;
+  margin-bottom: 16px;
+  text-align: center;
+}

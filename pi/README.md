@@ -40,8 +40,8 @@ The desired state persists, so if the Pi is offline or reboots it picks it up wh
 reconnects, but a reboot doesn't reset the 30 minutes. If the stream crashes the Pi reports `streaming: false` with an `error` and
 retries with backoff (5s, doubling up to 5 minutes) for as long as `desired.streaming` is true.
 
-The app will need its own credentials allowing `iot:GetThingShadow` and `iot:UpdateThingShadow`
-on the thing. Those aren't part of the stack yet.
+The viewer app in [`../app`](../app) does this with Cognito credentials that allow
+`iot:GetThingShadow` and `iot:UpdateThingShadow` on the thing.
 
 Without an app, you can test from the CLI:
 

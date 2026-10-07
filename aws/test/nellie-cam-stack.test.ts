@@ -78,3 +78,37 @@ test('device policy only allows its own shadow and the streamer role alias', () 
     },
   });
 });
+
+test('viewer user pool has no self sign-up', () => {
+  template.hasResourceProperties('AWS::Cognito::UserPool', {
+    AdminCreateUserConfig: { AllowAdminCreateUserOnly: true },
+  });
+  template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
+    GenerateSecret: false,
+    ExplicitAuthFlows: Match.arrayWith(['ALLOW_USER_SRP_AUTH']),
+  });
+  template.hasResourceProperties('AWS::Cognito::IdentityPool', {
+    AllowUnauthenticatedIdentities: false,
+  });
+});
+
+test('signed-in viewers can only watch the stream and use the thing shadow', () => {
+  template.hasResourceProperties('AWS::IAM::Policy', {
+    PolicyDocument: {
+      Statement: [
+        {
+          Effect: 'Allow',
+          Action: Match.arrayWith(['kinesisvideo:GetHLSStreamingSessionURL']),
+          Resource: { 'Fn::GetAtt': [Match.stringLikeRegexp('LiveStream'), 'Arn'] },
+        },
+        {
+          Effect: 'Allow',
+          Action: ['iot:GetThingShadow', 'iot:UpdateThingShadow'],
+          Resource: {
+            'Fn::Join': ['', ['arn:', { Ref: 'AWS::Partition' }, ':iot:', { Ref: 'AWS::Region' }, ':', { Ref: 'AWS::AccountId' }, ':thing/nellie-cam']],
+          },
+        },
+      ],
+    },
+  });
+});

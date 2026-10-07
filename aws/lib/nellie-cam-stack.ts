@@ -1,4 +1,6 @@
 import * as cdk from 'aws-cdk-lib/core';
+import * as cognito from 'aws-cdk-lib/aws-cognito';
+import * as identitypool from 'aws-cdk-lib/aws-cognito-identitypool';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as iot from 'aws-cdk-lib/aws-iot';
 import * as kinesisvideo from 'aws-cdk-lib/aws-kinesisvideo';
@@ -86,10 +88,54 @@ export class NellieCamStack extends cdk.Stack {
       },
     });
 
+    // Sign-in for the viewer app. Users are created by an admin; there's no self sign-up.
+    const userPool = new cognito.UserPool(this, 'ViewerUserPool', {
+      userPoolName: 'nellie-cam-viewers',
+      selfSignUpEnabled: false,
+      signInAliases: { email: true },
+      accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+    const userPoolClient = userPool.addClient('ViewerAppClient', {
+      userPoolClientName: 'nellie-cam-app',
+      authFlows: { userSrp: true },
+      generateSecret: false,
+      preventUserExistenceErrors: true,
+    });
+
+    // Signed-in users get temporary AWS credentials to watch the stream and start/stop it,
+    // so the app needs no server or stored AWS keys.
+    const viewerIdentityPool = new identitypool.IdentityPool(this, 'ViewerIdentityPool', {
+      identityPoolName: 'nellie-cam-viewers',
+      allowUnauthenticatedIdentities: false,
+      authenticationProviders: {
+        userPools: [new identitypool.UserPoolAuthenticationProvider({ userPool, userPoolClient })],
+      },
+    });
+    viewerIdentityPool.authenticatedRole.addToPrincipalPolicy(new iam.PolicyStatement({
+      actions: [
+        'kinesisvideo:GetDataEndpoint',
+        'kinesisvideo:GetHLSStreamingSessionURL',
+        'kinesisvideo:GetHLSMasterPlaylist',
+        'kinesisvideo:GetHLSMediaPlaylist',
+        'kinesisvideo:GetMP4InitFragment',
+        'kinesisvideo:GetMP4MediaFragment',
+        'kinesisvideo:GetTSFragment',
+      ],
+      resources: [stream.attrArn],
+    }));
+    viewerIdentityPool.authenticatedRole.addToPrincipalPolicy(new iam.PolicyStatement({
+      actions: ['iot:GetThingShadow', 'iot:UpdateThingShadow'],
+      resources: [iotArn(`thing/${thingName}`)],
+    }));
+
     new cdk.CfnOutput(this, 'StreamName', { value: stream.name! });
     new cdk.CfnOutput(this, 'StreamArn', { value: stream.attrArn });
     new cdk.CfnOutput(this, 'ThingName', { value: thing.thingName! });
     new cdk.CfnOutput(this, 'DevicePolicyName', { value: devicePolicy.policyName! });
     new cdk.CfnOutput(this, 'StreamerRoleAliasName', { value: roleAlias.roleAlias! });
+    new cdk.CfnOutput(this, 'UserPoolId', { value: userPool.userPoolId });
+    new cdk.CfnOutput(this, 'UserPoolClientId', { value: userPoolClient.userPoolClientId });
+    new cdk.CfnOutput(this, 'IdentityPoolId', { value: viewerIdentityPool.identityPoolId });
   }
 }
