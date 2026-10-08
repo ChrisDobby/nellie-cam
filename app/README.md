@@ -15,16 +15,20 @@ The app is server-rendered:
 - The video plays in the browser, straight from Kinesis over HLS. Only the playback URL comes
   from the server.
 
-The server has no AWS keys of its own. It calls AWS with the signed-in user's temporary
-credentials from the Cognito identity pool, which can only:
+The server calls AWS in two ways:
 
-- play `nellie-cam-live` over HLS (`kinesisvideo:GetHLSStreamingSessionURL` and related reads)
-- read and update the `nellie-cam` device shadow, which is how the camera is started and stopped
-  (see [`../pi/README.md`](../pi/README.md#shadow-contract))
+- It gets the playback URL with the signed-in user's temporary credentials from the Cognito
+  identity pool, which can only play `nellie-cam-live` over HLS
+  (`kinesisvideo:GetHLSStreamingSessionURL` and related reads).
+- It reads and updates the `nellie-cam` device shadow, which is how the camera is started and
+  stopped (see [`../pi/README.md`](../pi/README.md#shadow-contract)), with its own credentials:
+  the Lambda's role when hosted, which can only use that shadow, or your AWS profile when running
+  locally. AWS IoT doesn't accept identity pool credentials unless an IoT policy is also
+  attached to each user's identity, so the user's credentials aren't used for this.
 
 ## Setup
 
-1. Deploy the stack (`cd ../aws && npx cdk deploy`). It creates the `nellie-cam-viewers` user pool,
+1. Deploy the stack (`cd ../aws && npx cdk deploy NellieCamStack`). It creates the `nellie-cam-viewers` user pool,
    an app client and an identity pool.
 
 2. Create a user. Self sign-up is disabled, so accounts are created by an admin:
@@ -65,7 +69,17 @@ automatically after 30 minutes, and the page shows a countdown.
 
 ## Hosting
 
-It needs a Node.js host that supports Next.js server rendering, Server Actions and Proxy, such
-as Amplify Hosting, Vercel, or `npm run build && npm start` in a container. The host needs no
-AWS credentials. The `NEXT_PUBLIC_` variables are inlined at build time, so set them in the build
-environment.
+The app is built with [OpenNext](https://opennext.js.org/aws) (`open-next.config.ts`) and
+deployed by `NellieCamWebStack`: CloudFront in front of a Lambda for server rendering and Server
+Actions, with static files in S3. The Lambda can only read its bucket and use the camera's shadow.
+
+The `NEXT_PUBLIC_` variables are inlined at build time, so the app is built after `NellieCamStack`
+is deployed, from its outputs. To build and deploy:
+
+```sh
+cd ../aws
+./scripts/deploy-app.sh
+```
+
+It writes `.env.production.local` from the stack outputs, runs `npx open-next build` and deploys
+`NellieCamWebStack`, which outputs the app's URL.

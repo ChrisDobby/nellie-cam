@@ -21,6 +21,7 @@
     "react-dom": "19.2.8"
   },
   "devDependencies": {
+    "@opennextjs/aws": "^4.1.8",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

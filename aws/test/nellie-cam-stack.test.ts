@@ -92,7 +92,7 @@ test('viewer user pool has no self sign-up', () => {
   });
 });
 
-test('signed-in viewers can only watch the stream and use the thing shadow', () => {
+test('signed-in viewers can only watch the stream', () => {
   template.hasResourceProperties('AWS::IAM::Policy', {
     PolicyDocument: {
       Statement: [
@@ -100,13 +100,6 @@ test('signed-in viewers can only watch the stream and use the thing shadow', () 
           Effect: 'Allow',
           Action: Match.arrayWith(['kinesisvideo:GetHLSStreamingSessionURL']),
           Resource: { 'Fn::GetAtt': [Match.stringLikeRegexp('LiveStream'), 'Arn'] },
-        },
-        {
-          Effect: 'Allow',
-          Action: ['iot:GetThingShadow', 'iot:UpdateThingShadow'],
-          Resource: {
-            'Fn::Join': ['', ['arn:', { Ref: 'AWS::Partition' }, ':iot:', { Ref: 'AWS::Region' }, ':', { Ref: 'AWS::AccountId' }, ':thing/nellie-cam']],
-          },
         },
       ],
     },
