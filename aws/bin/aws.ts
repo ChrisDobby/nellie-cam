@@ -2,6 +2,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as cdk from 'aws-cdk-lib/core';
+import { NellieCamGitHubStack } from '../lib/nellie-cam-github-stack';
 import { NellieCamStack } from '../lib/nellie-cam-stack';
 import { NellieCamWebStack } from '../lib/nellie-cam-web-stack';
 
@@ -9,6 +10,7 @@ const app = new cdk.App();
 const env = { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION };
 
 new NellieCamStack(app, 'NellieCamStack', { env });
+new NellieCamGitHubStack(app, 'NellieCamGitHubStack', { env, repository: 'chrisdobby/nellie-cam', branch: 'main' });
 
 // The web stack deploys the built app, which needs NellieCamStack's outputs to build, so it only
 // exists once the app has been built (scripts/deploy-app.sh).

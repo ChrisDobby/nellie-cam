@@ -1,0 +1,81 @@
+# Checks every pull request and push, and deploys NellieCamStack and the viewer app
+# (NellieCamWebStack) on every push to main.
+#
+# AWS credentials come from GitHub's OIDC provider, through the role in NellieCamGitHubStack,
+# which only this repository's main branch can assume. Set the repository variable
+# AWS_DEPLOY_ROLE_ARN to that stack's DeployRoleArn output.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: eu-west-1
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            app/package-lock.json
+            aws/package-lock.json
+
+      - name: Check the app
+        working-directory: app
+        run: |
+          npm ci
+          npx tsc --noEmit
+          npx eslint
+
+      - name: Test the stacks
+        working-directory: aws
+        run: |
+          npm ci
+          npx tsc --noEmit
+          npm test
+
+  deploy:
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    # One deploy at a time; a newer push waits rather than cancelling one partway through.
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            app/package-lock.json
+            aws/package-lock.json
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy NellieCamStack
+        working-directory: aws
+        run: |
+          npm ci
+          npx cdk deploy NellieCamStack --require-approval never
+
+      - name: Build and deploy the app
+        working-directory: aws
+        run: ./scripts/deploy-app.sh --require-approval never

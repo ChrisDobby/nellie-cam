@@ -2,7 +2,7 @@
 # Builds the viewer app with the deployed NellieCamStack's settings and deploys it (NellieCamWebStack).
 # The settings are built into the app, so NellieCamStack must be deployed first.
 #
-# Usage: ./scripts/deploy-app.sh
+# Usage: ./scripts/deploy-app.sh [cdk deploy options, e.g. --require-approval never]
 # Run from aws/, with admin AWS credentials, in the same region as the deployed NellieCamStack.
 set -euo pipefail
 
@@ -29,4 +29,4 @@ EOF
 
 (cd "$APP_DIR" && npm ci && npx open-next build)
 
-npx cdk deploy NellieCamWebStack
+npx cdk deploy NellieCamWebStack "$@"
