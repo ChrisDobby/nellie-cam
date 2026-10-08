@@ -3,7 +3,11 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
 
 export interface NellieCamGitHubStackProps extends cdk.StackProps {
-  /** `owner/name` of the GitHub repository whose workflow deploys. */
+  /**
+   * The GitHub repository whose workflow deploys, as it appears in its OIDC tokens' `sub` claim.
+   * With immutable subjects that's `owner@ownerId/name@repoId`, so a repository that later takes
+   * the same name can't deploy; see `gh api repos/OWNER/REPO/actions/oidc/customization/sub`.
+   */
   repository: string;
   /** The only branch whose workflow runs can deploy. */
   branch: string;

@@ -10,7 +10,7 @@ const app = new cdk.App();
 const env = { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION };
 
 new NellieCamStack(app, 'NellieCamStack', { env });
-new NellieCamGitHubStack(app, 'NellieCamGitHubStack', { env, repository: 'ChrisDobby/nellie-cam', branch: 'main' });
+new NellieCamGitHubStack(app, 'NellieCamGitHubStack', { env, repository: 'ChrisDobby@434389/nellie-cam@1388800070', branch: 'main' });
 
 // The web stack deploys the built app, which needs NellieCamStack's outputs to build, so it only
 // exists once the app has been built (scripts/deploy-app.sh).
