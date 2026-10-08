@@ -9,8 +9,8 @@ export type Session = Awaited<ReturnType<typeof getSession>>;
 
 /**
  * The signed-in user's email and temporary AWS credentials from the identity pool, read from
- * the session cookies, or null if not signed in. AWS calls on the server use these credentials,
- * so the server has only the access the signed-in user has, and needs no keys of its own.
+ * the session cookies, or null if not signed in. Kinesis calls on the server use these
+ * credentials, so only signed-in users can get a playback URL.
  *
  * Throws if the user is signed in but credentials can't be fetched (e.g. a misconfigured
  * identity pool). Treating that as signed out would bounce between / and /login forever,

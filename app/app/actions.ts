@@ -11,15 +11,18 @@ import { requireSession } from '@/lib/server/session';
 // so the page's own check doesn't protect them.
 
 export async function fetchCameraState() {
+  await requireSession();
   return getCameraState();
 }
 
 export async function startStreaming() {
+  await requireSession();
   await setStreaming(true);
   return getCameraState();
 }
 
 export async function stopStreaming() {
+  await requireSession();
   await setStreaming(false);
   return getCameraState();
 }

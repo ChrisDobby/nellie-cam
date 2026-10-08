@@ -103,8 +103,9 @@ export class NellieCamStack extends cdk.Stack {
       preventUserExistenceErrors: true,
     });
 
-    // Signed-in users get temporary AWS credentials to watch the stream and start/stop it,
-    // so the app needs no server or stored AWS keys.
+    // Signed-in users get temporary AWS credentials to watch the stream. Starting and stopping it
+    // goes through the app's server (NellieCamWebStack), because AWS IoT only accepts Cognito
+    // identities that also have an IoT policy attached to each identity.
     const viewerIdentityPool = new identitypool.IdentityPool(this, 'ViewerIdentityPool', {
       identityPoolName: 'nellie-cam-viewers',
       allowUnauthenticatedIdentities: false,
@@ -123,10 +124,6 @@ export class NellieCamStack extends cdk.Stack {
         'kinesisvideo:GetTSFragment',
       ],
       resources: [stream.attrArn],
-    }));
-    viewerIdentityPool.authenticatedRole.addToPrincipalPolicy(new iam.PolicyStatement({
-      actions: ['iot:GetThingShadow', 'iot:UpdateThingShadow'],
-      resources: [iotArn(`thing/${thingName}`)],
     }));
 
     new cdk.CfnOutput(this, 'StreamName', { value: stream.name! });

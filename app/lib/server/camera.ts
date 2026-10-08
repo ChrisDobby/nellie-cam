@@ -18,20 +18,17 @@ import type { Session } from './session';
 
 type Credentials = NonNullable<Session>['credentials'];
 
-const client = new IoTDataPlaneClient({
+// The shadow is read and updated with the server's own credentials (the Lambda's role when
+// hosted), not the user's: AWS IoT only accepts Cognito identities that also have an IoT policy
+// attached to each identity. Callers must check the session first.
+const iot = new IoTDataPlaneClient({
+  region: config.region,
   endpoint: `https://${config.iotEndpoint}`,
 });
-// function iot(credentials: Credentials) {
-//   return new IoTDataPlaneClient({
-//     region: config.region,
-//     endpoint: `https://${config.iotEndpoint}`,
-//     credentials,
-//   });
-// }
 
 export async function getCameraState(): Promise<CameraState> {
   try {
-    const { payload } = await client.send(
+    const { payload } = await iot.send(
       new GetThingShadowCommand({ thingName: config.thingName }),
     );
     const { state } = JSON.parse(new TextDecoder().decode(payload));
@@ -45,7 +42,6 @@ export async function getCameraState(): Promise<CameraState> {
     // No shadow yet: the Pi hasn't connected for the first time.
     if (e instanceof ShadowNotFound)
       return { requested: false, streaming: false };
-    console.log(e);
     throw e;
   }
 }
@@ -54,7 +50,7 @@ export async function setStreaming(streaming: boolean) {
   const payload = new TextEncoder().encode(
     JSON.stringify({ state: { desired: { streaming } } }),
   );
-  await client.send(
+  await iot.send(
     new UpdateThingShadowCommand({ thingName: config.thingName, payload }),
   );
 }
