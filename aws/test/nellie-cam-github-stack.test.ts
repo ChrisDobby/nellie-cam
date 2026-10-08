@@ -3,7 +3,7 @@ import { Match, Template } from 'aws-cdk-lib/assertions';
 import { NellieCamGitHubStack } from '../lib/nellie-cam-github-stack';
 
 const template = Template.fromStack(new NellieCamGitHubStack(new cdk.App(), 'TestGitHubStack', {
-  repository: 'chrisdobby/nellie-cam',
+  repository: 'ChrisDobby/nellie-cam',
   branch: 'main',
 }));
 
@@ -18,7 +18,7 @@ test('only the main branch of the repository can assume the deploy role', () => 
         Condition: {
           StringEquals: {
             'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
-            'token.actions.githubusercontent.com:sub': 'repo:chrisdobby/nellie-cam:ref:refs/heads/main',
+            'token.actions.githubusercontent.com:sub': 'repo:ChrisDobby/nellie-cam:ref:refs/heads/main',
           },
         },
       }],
